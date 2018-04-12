@@ -10,5 +10,6 @@ FFT: The spectrogram of your signal shows you the spikes if you have strong harm
 Oscillo: no trigger lock yet, will eventually be useful to see what machine is eating electricity
 
 USAGE: Compile with M5Stack in your library folder and eft32 in your hardware folder.
+Connect the source to pin 35 and the ground to GND
 
 NOTE: measurements are inacurate and the FFT looks off even for a square wave
