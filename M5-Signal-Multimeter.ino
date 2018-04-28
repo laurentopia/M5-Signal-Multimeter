@@ -4,7 +4,7 @@
 // 4/11/2018 no more core 1, moved oscillo, fft to the main loop, back to drawline
 // 4/12/2018 moved everything in the main loop
 // 4/15/2018 split draw and capture, added semaphores (doesn't work)
-// 4/19/2018 back to main loop, split FFT() and drawFFT(), increased sampling to 20kHz for sound, 
+// 4/19/2018 back to main loop, split FFT() and drawFFT(), increased sampling to 20kHz for sound,
 
 // TODO: fix the weird retults, FFT access wrong?
 // TODO: fix the oscillo draw which is a bit on the sloooooooowwwwwwwww siiiiiiiiide
@@ -14,28 +14,27 @@
 arduinoFFT FFT = arduinoFFT();
 
 /////////////////////////////////////////////////////////////////////////
-#define SAMPLES 512			   // Must be a power of 2
-#define SAMPLING_FREQUENCY 20000 // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
-#define SIGNAL_AMPLITUDE 200   // Depending on your audio source level, you may need to increase this value
-unsigned int sampling_period_us;
-unsigned long microseconds;
+const unsigned int SAMPLES = 512;				  // Must be a power of 2;
+const unsigned long SAMPLING_FREQUENCY = 10000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
+const unsigned int SIGNAL_AMPLITUDE = 200;		  // Depending on your audio source level, you may need to increase this value;
+unsigned int sampling_period_ms = 0;
+unsigned long long microseconds = 0;
 //byte peak[8] = { 0 };
 double vSample[SAMPLES] = { 0 };
 double buffer[SAMPLES] = { 0 };
 double oldOscilloBuffer[SAMPLES] = { 0 };
 double vOldSample[SAMPLES] = { 0 };
-unsigned long newTime, oldTime;
+unsigned long long newTime = 0, oldTime = 0;
 /////////////////////////////////////////////////////////////////////////
-#define MAX_BAND_HEIGHT 100
-#define OSCILLO_Y 200
-#define OSCILLO_YSCALE 0.015
-
-float FFTDisplayScale;
+const unsigned int MAX_BAND_HEIGHT = 100;
+const unsigned int OSCILLO_Y = 200;
+float OSCILLO_YSCALE = 0.015f;
+float FFTDisplayScale = 0;
 
 String majorPeakFrequency = "";
 String THD = "";
-unsigned long majorPeakTime;
-String oldFFTDisplayScale;
+unsigned long majorPeakTime = 0;
+String oldFFTDisplayScale = "";
 
 void displayBand(int band, int dsize, const String &string)
 {
@@ -49,8 +48,6 @@ void displayBand(int band, int dsize, const String &string)
 	M5.Lcd.drawFastVLine(band, MAX_BAND_HEIGHT - dsize, dsize, GREEN);
 }
 
-SemaphoreHandle_t battonEndCapture, battonEndDraw, battonEndDrawOscillo;
-
 void Capture()
 {
 	//capturee
@@ -59,10 +56,8 @@ void Capture()
 		newTime = micros() - oldTime;
 		oldTime = newTime;
 		vSample[i] = analogRead(35); // A conversion takes about 1uS on an ESP32
-		while (micros() < (newTime + sampling_period_us))
-		{
-			//wait for next sample time
-		}
+		vTaskDelay(sampling_period_ms / portTICK_PERIOD_MS);
+		//while (micros() < (newTime + sampling_period_us)) { /* do nothing to wait */ }
 	}
 }
 
@@ -72,19 +67,19 @@ void DrawOscillo()
 	for (int i = 0; i < SAMPLES; i++)
 		buffer[i] = vSample[i];
 
-	for (int i = 0; i < SAMPLES; i++)
+	for (int i = 0; i < min(320,SAMPLES); i++)
 	{
 		//if (i == 0)
 		//{
-			M5.Lcd.drawPixel(i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
-			M5.Lcd.drawPixel(i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
+		M5.Lcd.drawPixel(i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
+		M5.Lcd.drawPixel(i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
 		//}
 		//else
 		//{
-		//	M5.Lcd.drawLine(i - 1, OSCILLO_Y - oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
-		//	M5.Lcd.drawLine(i - 1, OSCILLO_Y - buffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
-			//M5.Lcd.drawFastVLine (i, OSCILLO_Y - min(oldOscilloBuffer[i - 1], oldOscilloBuffer[i]) * OSCILLO_YSCALE, max(1,abs(oldOscilloBuffer[i]- oldOscilloBuffer[i-1])) * OSCILLO_YSCALE, BLACK);
-			//M5.Lcd.drawFastVLine(i, OSCILLO_Y - min(buffer[i - 1], buffer[i]) * OSCILLO_YSCALE, max(1,abs(buffer[i] - buffer[i - 1])) * OSCILLO_YSCALE, RED);
+			//M5.Lcd.drawLine(i - 1, OSCILLO_Y - oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
+			//M5.Lcd.drawLine(i - 1, OSCILLO_Y - buffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
+		//M5.Lcd.drawFastVLine (i, OSCILLO_Y - min(oldOscilloBuffer[i - 1], oldOscilloBuffer[i]) * OSCILLO_YSCALE, max(1,abs(oldOscilloBuffer[i]- oldOscilloBuffer[i-1])) * OSCILLO_YSCALE, BLACK);
+		//M5.Lcd.drawFastVLine(i, OSCILLO_Y - min(buffer[i - 1], buffer[i]) * OSCILLO_YSCALE, max(1,abs(buffer[i] - buffer[i - 1])) * OSCILLO_YSCALE, RED);
 		//}
 	}
 
@@ -95,7 +90,7 @@ void DrawOscillo()
 
 double FFTreal[SAMPLES] = { 0 };
 double FFTimaginary[SAMPLES] = { 0 };
-double FFTmagnitude[SAMPLES/2] = { 0 };
+double FFTmagnitude[SAMPLES] = { 0 };
 void ComputeFFT()
 {
 	//copy to fft buffer
@@ -111,7 +106,7 @@ void ComputeFFT()
 	FFT.ComplexToMagnitude(FFTreal, FFTimaginary, SAMPLES);
 
 	//copy to fft magnitude
-	for (int i = 0; i < SAMPLES / 2; i++)
+	for (int i = 0; i < SAMPLES; i++)
 	{
 		FFTmagnitude[i] = FFTreal[i];
 	}
@@ -127,16 +122,15 @@ void DrawFFT()
 		FFTDisplayBuffer[i] = FFTmagnitude[i];
 	}
 
-
 	//display spectral bands
-	for (int i = 1; i < SAMPLES/2; i++)
+	for (int i = 2; i < SAMPLES >> 1 ; i=i+1)
 	{
 		int amplitude = (int)FFTDisplayBuffer[i] * FFTDisplayScale / SIGNAL_AMPLITUDE;
 		//displayValues[i] = vReal[i];
-		if (i == SAMPLES / 4)
-			displayBand(i, amplitude, String(i * 2 * SAMPLING_FREQUENCY / SAMPLES));
-		else
-			displayBand(i, amplitude, "");
+		//if (i == SAMPLES / 4)
+		//	displayBand(i, amplitude, String(i * 2 * SAMPLING_FREQUENCY / SAMPLES));
+		//else
+			displayBand(i/1, amplitude, "");
 	}
 
 	//calculate peak and THD
@@ -147,7 +141,7 @@ void DrawFFT()
 		//THD
 		double totalTHD = 0;
 		double maxPowerForTHD = 0;
-		for (int i = 1; i < SAMPLES / 2; i++)
+		for (int i = 2; i < SAMPLES / 2; i++)
 		{
 			totalTHD += sq(FFTreal[i]);
 			if (FFTreal[i] > maxPowerForTHD)
@@ -183,15 +177,24 @@ void Input()
 	M5.Lcd.drawString(oldFFTDisplayScale, 160, 230, WHITE);
 }
 
+
+void Synusoide_Task(void *parameter)
+{
+	for (;;)
+	{
+		for (int i = 0; i < 360; i++)
+		{
+			dacWrite(26, (120 + (sin((i * 3.14) / 180) * (120 - (i / 100)))));
+		}
+	}
+	vTaskDelete(NULL);
+}
+
 void taskCapture(void *pvParameters)
 {
 	for (;;)
 	{
-		xSemaphoreTake(battonEndDraw, portMAX_DELAY);
-		xSemaphoreTake(battonEndDrawOscillo, portMAX_DELAY);
 		Capture();
-		xSemaphoreGive(battonEndCapture);
-
 	}
 }
 
@@ -199,10 +202,17 @@ void TaskDraw(void *pvParameters)
 {
 	for (;;)
 	{
-		xSemaphoreTake(battonEndCapture, portMAX_DELAY);
 		DrawFFT();
 		DrawOscillo();
-		xSemaphoreGive(battonEndDraw);
+	}
+}
+
+void TaskDebug(void *pvParameters)
+{
+	for (;;)
+	{
+		Serial.println(esp_get_minimum_free_heap_size());
+		delay(5000);
 	}
 }
 
@@ -217,7 +227,7 @@ void setup()
 	//speaker shhhhh
 	dacWrite(25, 0);
 
-	sampling_period_us = round(1000000 * (1.0 / SAMPLING_FREQUENCY));
+	sampling_period_ms = round(1000 * (1.0 / SAMPLING_FREQUENCY));
 	FFTDisplayScale = 0.3;
 
 	file = SD.open(PATH, FILE_WRITE);
@@ -225,18 +235,20 @@ void setup()
 	//launch tasks parameters:  (task function, name, stack size (W), task parameters, priority, task handle, core#)
 	//xTaskCreatePinnedToCore(taskCapture, "AD sampling", 8192, NULL, 1, NULL, 0);
 	//xTaskCreatePinnedToCore(TaskDraw, "draw FFT", 8192, NULL, 2, NULL, 0);
+	//xTaskCreatePinnedToCore(TaskDebug, "debug", 8192, NULL, 2, NULL, 0);
+	//xTaskCreatePinnedToCore(Synusoide_Task, "sin output on 26", 8192, NULL, 2, NULL, 0);
 }
 
-long int oldMillis;
+long int oldMillis = 0;
 void loop()
 {
 	//Input();
-	oldMillis = millis();
+	//oldMillis = millis();
 	Capture();
+	//Serial.println(millis() - oldMillis);
 	ComputeFFT();
 	DrawFFT();
 	DrawOscillo();
-	Serial.println(millis() - oldMillis);
 
 	// necessary when nothing is in loop and one core has a task running
 	//delay(500);
