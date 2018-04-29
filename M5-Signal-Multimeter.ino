@@ -5,18 +5,31 @@
 // 4/12/2018 moved everything in the main loop
 // 4/15/2018 split draw and capture, added semaphores (doesn't work)
 // 4/19/2018 back to main loop, split FFT() and drawFFT(), increased sampling to 20kHz for sound,
+//4/2/2018 waterfall, sprite, using TFT_eSPI, no more m5 but... capture is anemic.... why??
+
 
 // TODO: fix the weird retults, FFT access wrong?
 // TODO: fix the oscillo draw which is a bit on the sloooooooowwwwwwwww siiiiiiiiide
 
 #include <dummy.h>
-#include <M5Stack.h>
+//#include <M5Stack.h>
 #include <arduinoFFT.h>
 arduinoFFT FFT = arduinoFFT();
 
+#include <TFT_eSPI.h>
+TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite spectrum = TFT_eSprite(&tft); // Sprite object spectrograph
+TFT_eSprite waterfall = TFT_eSprite(&tft); // Sprite object waterfall
+TFT_eSprite oscillo = TFT_eSprite(&tft); // Sprite object waterfall
+const unsigned int GRAPHWIDTH = 256;
+const unsigned int SPECTRUMHEIGHT = 40;
+const unsigned int WATERFALLHEIGHT = 100;
+const unsigned int OSCILLOHEIGHT = 80;
+
+
 /////////////////////////////////////////////////////////////////////////
 const unsigned int SAMPLES = 512;				  // Must be a power of 2;
-const unsigned long SAMPLING_FREQUENCY = 20000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
+const unsigned long SAMPLING_FREQUENCY = 5000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
 const unsigned int SIGNAL_AMPLITUDE = 200;		  // Depending on your audio source level, you may need to increase this value;
 unsigned int sampling_period_ms = 0;
 unsigned long long microseconds = 0;
@@ -27,8 +40,7 @@ double oldOscilloBuffer[SAMPLES] = { 0 };
 double vOldSample[SAMPLES] = { 0 };
 unsigned long long newTime = 0, oldTime = 0;
 /////////////////////////////////////////////////////////////////////////
-const unsigned int MAX_BAND_HEIGHT = 70;
-const unsigned int OSCILLO_Y = 200;
+const unsigned int OSCILLO_Y = 160;
 float OSCILLO_YSCALE = 0.015f;
 float FFTDisplayScale = 0;
 
@@ -40,9 +52,7 @@ String oldFFTDisplayScale = "";
 bool getHeatMapColor(float value, uint8_t *red, uint8_t *green, uint8_t *blue)
 {
 	const int NUM_COLORS = 3;
-	//static float color[NUM_COLORS][3] = { { 0,100,255 },{ 0,255,0 },{ 255,255,0 },{ 255,0,0 } };
-	static float color[NUM_COLORS][3] = { { 50,0,255 },{ 255,0,0 } ,{ 255,255,0 } };
-	// A static array of 4 colors:  (blue,   green,  yellow,  red) using {r,g,b} for each.
+	static float color[NUM_COLORS][3] = { { 50,0,100 },{ 255,0,0 } ,{ 255,255,0 } };
 
 	int idx1;        // |-- Our desired color will be between these two indexes in "color".
 	int idx2;        // |
@@ -63,21 +73,7 @@ bool getHeatMapColor(float value, uint8_t *red, uint8_t *green, uint8_t *blue)
 	*blue = (color[idx2][2] - color[idx1][2])*fractBetween + color[idx1][2];
 }
 
-void displayBand(int band, int dsize, const String &string)
-{
-	if (string != "")
-	{
-		M5.Lcd.setTextColor(GREEN);
-		M5.Lcd.drawString(string, band, MAX_BAND_HEIGHT);
-	}
-	dsize = min(dsize, MAX_BAND_HEIGHT);
-	M5.Lcd.drawFastVLine(band, 0, MAX_BAND_HEIGHT, BLACK);
-	uint8_t r, g, b;
-	getHeatMapColor((float)dsize/(float) MAX_BAND_HEIGHT, &r, &g, &b);
-	uint16_t color = m5.Lcd.color565(r, g, b);
-	M5.Lcd.drawFastVLine(band, MAX_BAND_HEIGHT - dsize, dsize, color);
-}
-
+#include <driver/adc.h>
 void Capture()
 {
 	//capturee
@@ -85,9 +81,8 @@ void Capture()
 	{
 		newTime = micros() - oldTime;
 		oldTime = newTime;
-		vSample[i] = analogRead(35); // A conversion takes about 1uS on an ESP32
+		vSample[i] = adc1_get_raw(ADC1_CHANNEL_7);// analogRead(35); // A conversion takes about 1uS on an ESP32
 		vTaskDelay(sampling_period_ms / portTICK_PERIOD_MS);
-		//while (micros() < (newTime + sampling_period_us)) { /* do nothing to wait */ }
 	}
 }
 
@@ -97,21 +92,26 @@ void DrawOscillo()
 	for (int i = 0; i < SAMPLES; i++)
 		buffer[i] = vSample[i];
 
-	for (int i = 0; i < min(320,SAMPLES); i++)
+	oscillo.fillSprite(TFT_BLACK);
+	for (int i = 0; i < min(GRAPHWIDTH,SAMPLES); i++)
 	{
 		//if (i == 0)
 		//{
-		//M5.Lcd.drawPixel(i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
-		//M5.Lcd.drawPixel(i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
+		oscillo.drawPixel(i, buffer[i] * OSCILLO_YSCALE, TFT_ORANGE);
+
+		//spectrum.drawLine(i - 1, buffer[i - 1] * OSCILLO_YSCALE, i, buffer[i] * OSCILLO_YSCALE, TFT_RED);
 		//}
 		//else
 		//{
-			M5.Lcd.drawLine(i - 1, OSCILLO_Y - oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
-			M5.Lcd.drawLine(i - 1, OSCILLO_Y - buffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
+			//M5.Lcd.drawLine(i - 1, OSCILLO_Y - oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
+			//M5.Lcd.drawLine(i - 1, OSCILLO_Y - buffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
 		//M5.Lcd.drawFastVLine (i, OSCILLO_Y - min(oldOscilloBuffer[i - 1], oldOscilloBuffer[i]) * OSCILLO_YSCALE, max(1,abs(oldOscilloBuffer[i]- oldOscilloBuffer[i-1])) * OSCILLO_YSCALE, BLACK);
 		//M5.Lcd.drawFastVLine(i, OSCILLO_Y - min(buffer[i - 1], buffer[i]) * OSCILLO_YSCALE, max(1,abs(buffer[i] - buffer[i - 1])) * OSCILLO_YSCALE, RED);
 		//}
 	}
+
+	oscillo.pushSprite(0,OSCILLO_Y);
+
 
 	//copy to back buffer
 	for (int i = 0; i < SAMPLES; i++)
@@ -153,15 +153,21 @@ void DrawFFT()
 	}
 
 	//display spectral bands
-	for (int i = 2; i < SAMPLES >> 1 ; i=i+1)
+	spectrum.fillSprite(TFT_BLACK);
+	for (int i = 2; i < min(SAMPLES>>1 , GRAPHWIDTH) ; i=i+1)
 	{
 		int amplitude = (int)FFTDisplayBuffer[i] * FFTDisplayScale / SIGNAL_AMPLITUDE;
-		//displayValues[i] = vReal[i];
-		//if (i == SAMPLES / 4)
-		//	displayBand(i, amplitude, String(i * 2 * SAMPLING_FREQUENCY / SAMPLES));
-		//else
-			displayBand(i/1, amplitude, "");
+		amplitude = min(amplitude, SPECTRUMHEIGHT);
+		uint8_t r, g, b;
+		getHeatMapColor((float)amplitude / (float)SPECTRUMHEIGHT, &r, &g, &b);
+		uint16_t color = tft.color565(r, g, b);
+		spectrum.drawFastVLine(i, SPECTRUMHEIGHT - amplitude, amplitude, color);
+		waterfall.drawPixel(i, 0, color);
 	}
+
+	spectrum.pushSprite(0, 0);
+	waterfall.pushSprite(0, SPECTRUMHEIGHT);
+	waterfall.scroll(0, 1);
 
 	//calculate peak and THD
 	if (millis() > majorPeakTime)
@@ -182,31 +188,48 @@ void DrawFFT()
 		totalTHD *= 100;
 
 		THD = String(totalTHD, 1);
-		M5.Lcd.fillRect(10, MAX_BAND_HEIGHT + 10, 70, MAX_BAND_HEIGHT + 20, BLACK);
-		M5.Lcd.drawString(majorPeakFrequency + " Hz", 10, MAX_BAND_HEIGHT + 10);
-		M5.Lcd.fillRect(100, MAX_BAND_HEIGHT + 10, 170, MAX_BAND_HEIGHT + 20, BLACK);
-		M5.Lcd.drawString("THD " + THD + "%", 100, MAX_BAND_HEIGHT + 10);
+		
+		TextBox(String(majorPeakFrequency + " Hz"), GRAPHWIDTH, 10);
+		TextBox(String("THD " + THD + "%"), GRAPHWIDTH, 40);
 	}
 }
 
-/// M5 button input change scale etc...
-void Input()
+TFT_eSprite img = TFT_eSprite(&tft);  // Create Sprite object "img" with pointer to "tft" object
+void TextBox(const String& txt, int x, int y)
 {
-	if (M5.BtnA.wasPressed() == true)
-	{
-		FFTDisplayScale -= .3;
-		FFTDisplayScale = max(FFTDisplayScale, 0.1);
-	}
-	if (M5.BtnC.wasPressed() == true)
-	{
-		FFTDisplayScale += .3;
-		FFTDisplayScale = min(FFTDisplayScale, 3);
-	}
-	M5.Lcd.drawString(oldFFTDisplayScale, 160, 230, BLACK);
-	oldFFTDisplayScale = String(FFTDisplayScale);
-	M5.Lcd.drawString(oldFFTDisplayScale, 160, 230, WHITE);
-}
 
+	// Size of sprite
+#define IWIDTH  60
+#define IHEIGHT 16
+
+	// Create a 8 bit sprite 80 pixels wide, 35 high (2800 bytes of RAM needed)
+	img.setColorDepth(8);
+	img.createSprite(IWIDTH, IHEIGHT);
+
+	// Fill it with black (this will be the transparent colour this time)
+	img.fillSprite(TFT_BLACK);
+
+	// Draw a background for the numbers
+	img.fillRoundRect(0, 0, IWIDTH, IHEIGHT-1, 6, TFT_DARKGREY);
+	//img.drawRoundRect(0, 0, IWIDTH, IHEIGHT-1, 6, TFT_WHITE);
+
+	// Set the font parameters
+	img.setTextSize(1);           // Font size scaling is x1
+	img.setTextColor(TFT_WHITE);  // White text, no background colour
+
+								  // Set text coordinate datum to middle right
+	img.setTextDatum(MR_DATUM);
+
+	// Draw the number to 3 decimal places at 70,20 in font 4
+	img.drawString(txt, IWIDTH,8, 1);
+
+	// Push sprite to TFT screen CGRAM at coordinate x,y (top left corner)
+	// All black pixels will not be drawn hence will show as "transparent"
+	img.pushSprite(x, y, TFT_BLACK);
+
+	// Delete sprite to free up the RAM
+	img.deleteSprite();
+}
 
 void Synusoide_Task(void *parameter)
 {
@@ -219,15 +242,12 @@ void Synusoide_Task(void *parameter)
 	}
 	vTaskDelete(NULL);
 }
-
 void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 255)
 {
 	uint32_t duty = (8191 / valueMax) * min(value, valueMax);
 	ledcWrite(channel, duty);
 }
-
-// Make a PWM generator task on core 0
-// Signal generator pin 2
+// Make a PWM generator task on core 0 Signal generator pin 2
 void LedC_Task(void *parameter)
 {
 	int phase = 128;
@@ -242,7 +262,6 @@ void LedC_Task(void *parameter)
 	}
 	vTaskDelete(NULL);
 }
-
 void taskCapture(void *pvParameters)
 {
 	for (;;)
@@ -250,7 +269,6 @@ void taskCapture(void *pvParameters)
 		Capture();
 	}
 }
-
 void TaskDraw(void *pvParameters)
 {
 	for (;;)
@@ -259,7 +277,6 @@ void TaskDraw(void *pvParameters)
 		DrawOscillo();
 	}
 }
-
 void TaskDebug(void *pvParameters)
 {
 	for (;;)
@@ -269,21 +286,37 @@ void TaskDebug(void *pvParameters)
 	}
 }
 
-File file;
-#define PATH "/hello.txt"
-
 void setup()
 {
-	M5.begin();
+	tft.init();
+	tft.fillScreen(TFT_BLACK);
+	tft.setRotation(1);
+
+	// Create a sprite for the graph
+	spectrum.setColorDepth(16);
+	spectrum.createSprite(GRAPHWIDTH, SPECTRUMHEIGHT);
+	spectrum.fillSprite(TFT_BLACK); // Note: Sprite is filled with black when created
+
+	waterfall.setColorDepth(16);
+	waterfall.createSprite(GRAPHWIDTH, WATERFALLHEIGHT);
+	waterfall.fillSprite(TFT_BLACK); // Note: Sprite is filled with black when created
+
+	oscillo.setColorDepth(16);
+	oscillo.createSprite(GRAPHWIDTH, OSCILLOHEIGHT);
+	oscillo.fillSprite(TFT_BLACK); // Note: Sprite is filled with black when created
+
 	Serial.begin(115200);
 
 	//speaker shhhhh
 	dacWrite(25, 0);
 
+	adc1_config_width(ADC_WIDTH_BIT_12);   //Range 0-1023 
+	adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_2_5);  //ADC_ATTEN_DB_11 = 0-3,6V
+	//analogReadResolution(12); // Default of 12 is not very linear. Recommended to use 10 or 11 depending on needed resolution.
+	//analogSetAttenuation(ADC_6db); // Default is 11db which is very noisy. Recommended to use 2.5 or 6.
+
 	sampling_period_ms = round(1000 * (1.0 / SAMPLING_FREQUENCY));
 	FFTDisplayScale = 0.3;
-
-	file = SD.open(PATH, FILE_WRITE);
 
 	//launch tasks parameters:  (task function, name, stack size (W), task parameters, priority, task handle, core#)
 	//xTaskCreatePinnedToCore(taskCapture, "AD sampling", 8192, NULL, 1, NULL, 0);
@@ -302,8 +335,8 @@ void loop()
 	Capture();
 	//Serial.println(millis() - oldMillis);
 	ComputeFFT();
-	DrawFFT();
 	DrawOscillo();
+	DrawFFT();
 
 	// necessary when nothing is in loop and one core has a task running
 	//delay(500);
