@@ -29,7 +29,7 @@ const unsigned int OSCILLOHEIGHT = 80;
 
 /////////////////////////////////////////////////////////////////////////
 const unsigned int SAMPLES = 512;				  // Must be a power of 2;
-const unsigned long SAMPLING_FREQUENCY = 5000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
+const unsigned long SAMPLING_FREQUENCY = 40000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
 const unsigned int SIGNAL_AMPLITUDE = 200;		  // Depending on your audio source level, you may need to increase this value;
 unsigned int sampling_period_ms = 0;
 unsigned long long microseconds = 0;
@@ -81,7 +81,8 @@ void Capture()
 	{
 		newTime = micros() - oldTime;
 		oldTime = newTime;
-		vSample[i] = adc1_get_raw(ADC1_CHANNEL_7);// analogRead(35); // A conversion takes about 1uS on an ESP32
+		vSample[i] = analogRead(35); // A conversion takes about 1uS on an ESP32
+		//vSample[i] = adc1_get_raw(ADC1_CHANNEL_7);
 		vTaskDelay(sampling_period_ms / portTICK_PERIOD_MS);
 	}
 }
@@ -187,10 +188,10 @@ void DrawFFT()
 		totalTHD = sqrt(totalTHD) / maxPowerForTHD;
 		totalTHD *= 100;
 
-		THD = String(totalTHD, 1);
+		THD = String(totalTHD, 0);
 		
 		TextBox(String(majorPeakFrequency + " Hz"), GRAPHWIDTH, 10);
-		TextBox(String("THD " + THD + "%"), GRAPHWIDTH, 40);
+		TextBox("THD " + THD + " %", GRAPHWIDTH, 40);
 	}
 }
 
@@ -310,10 +311,10 @@ void setup()
 	//speaker shhhhh
 	dacWrite(25, 0);
 
-	adc1_config_width(ADC_WIDTH_BIT_12);   //Range 0-1023 
-	adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_2_5);  //ADC_ATTEN_DB_11 = 0-3,6V
-	//analogReadResolution(12); // Default of 12 is not very linear. Recommended to use 10 or 11 depending on needed resolution.
-	//analogSetAttenuation(ADC_6db); // Default is 11db which is very noisy. Recommended to use 2.5 or 6.
+	//adc1_config_width(ADC_WIDTH_BIT_12);   //Range 0-1023 
+	//adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_2_5);  //ADC_ATTEN_DB_11 = 0-3,6V
+	analogReadResolution(12); // Default of 12 is not very linear. Recommended to use 10 or 11 depending on needed resolution.
+	analogSetAttenuation(ADC_2_5db); // Default is 11db which is very noisy. Recommended to use 2.5 or 6.
 
 	sampling_period_ms = round(1000 * (1.0 / SAMPLING_FREQUENCY));
 	FFTDisplayScale = 0.3;
@@ -330,15 +331,18 @@ void setup()
 long int oldMillis = 0;
 void loop()
 {
+	uint32_t dt = millis();
+
 	//Input();
 	//oldMillis = millis();
-	Capture();
+	Capture(); //10ms
 	//Serial.println(millis() - oldMillis);
-	ComputeFFT();
-	DrawOscillo();
-	DrawFFT();
+	ComputeFFT(); //14ms
+	DrawOscillo(); // 14ms
+	DrawFFT(); //28ms
 
 	// necessary when nothing is in loop and one core has a task running
 	//delay(500);
 	//M5.update();
+	TextBox(String( millis() - dt) + " ms",GRAPHWIDTH,200);
 }
