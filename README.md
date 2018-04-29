@@ -1,7 +1,7 @@
 # M5-Signal-Multimeter
 Displays FFT, Waterfall, Hz, THD and Oscillo of a signal
 
-![](https://i.imgur.com/sfoJP5h.jpg) ![](https://i.imgur.com/nnu565o.jpg)
+![](https://i.imgur.com/nnu565o.jpg)
 
 Currently not very useful because the Hz measurement is wrong, the FFT scale is linear and should be log, but it's pretty.
 
