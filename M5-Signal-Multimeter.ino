@@ -314,7 +314,7 @@ void setup()
 	//adc1_config_width(ADC_WIDTH_BIT_12);   //Range 0-1023 
 	//adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_2_5);  //ADC_ATTEN_DB_11 = 0-3,6V
 	analogReadResolution(12); // Default of 12 is not very linear. Recommended to use 10 or 11 depending on needed resolution.
-	analogSetAttenuation(ADC_2_5db); // Default is 11db which is very noisy. Recommended to use 2.5 or 6.
+	analogSetAttenuation(ADC_0db); // Default is 11db which is very noisy. Recommended to use 2.5 or 6.
 
 	sampling_period_ms = round(1000 * (1.0 / SAMPLING_FREQUENCY));
 	FFTDisplayScale = 0.3;
