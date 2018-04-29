@@ -3,7 +3,7 @@ Displays FFT, Waterfall, Hz, THD and Oscillo of a signal
 
 ![](https://i.imgur.com/nnu565o.jpg)
 
-Currently not very useful because the Hz measurement is wrong, the FFT scale is linear and should be log, but it's pretty.
+Currently not very useful because the of inacurate everything but it's pretty.
 
 The goal:
 When connected to an split core current transformer like the SCT013-020, it helps determine how clean the electricity is and you can identify if a motor is failing.
@@ -14,5 +14,3 @@ Oscillo: no trigger lock yet, will eventually be useful to see what machine is e
 
 USAGE: Compile with M5Stack in your library folder and eft32 in your hardware folder.
 Connect the source to pin 35 and the ground to GND
-
-NOTE: measurements are inacurate
