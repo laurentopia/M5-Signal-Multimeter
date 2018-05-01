@@ -6,7 +6,7 @@
 4/15/2018 split draw and capture, added semaphores (doesn't work)
 4/19/2018 back to main loop, split FFT() and drawFFT(), increased sampling to 20kHz for sound,
 4/2/2018 waterfall, sprite, using TFT_eSPI, no more m5 but... capture is anemic.... why??
-5/1/2018 capture and FFT are performed on core 0 and draw on core 1... and it works!!
+5/1/2018 capture and FFT are performed on core 0 and draw on core 1... and it works!!	added auto trigger
 */ 
 
 // TODO: fix the weird retults, FFT access wrong?
@@ -118,19 +118,38 @@ void DrawOscillo()
 	for (int i = 0; i < SAMPLES; i++)
 		buffer[i] = vSample[i];
 
+	// auto trigger
+	// find middle value
+	double min=1000, max=-1000, middle=0;
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		if (buffer[i] > max)
+			max = buffer[i];
+		if (buffer[i] < min)
+			min = buffer[i];
+	}
+	middle = (min + max) / 2;
+	// find trigger index
+	int triggerIndex = 0;
+	for (int i = 0; i < min(GRAPHWIDTH, SAMPLES); i++)
+	{
+		if ((buffer[i - 1]<buffer[i] && buffer[i] > middle))// || (buffer[i - 1] > buffer[i] && buffer[i] < middle))
+			triggerIndex = i;
+	}
+
 	oscillo.fillSprite(TFT_BLACK);
-	for (int i = 0; i < min(GRAPHWIDTH,SAMPLES); i++)
+	for (int i = triggerIndex; i < min(GRAPHWIDTH+triggerIndex,SAMPLES); i++)
 	{
 		//if (i == 0)
 		//{
-		oscillo.drawPixel(i, buffer[i] * OSCILLO_YSCALE, TFT_ORANGE);
+		//oscillo.drawPixel(i, buffer[i] * OSCILLO_YSCALE, TFT_ORANGE);
 
 		//spectrum.drawLine(i - 1, buffer[i - 1] * OSCILLO_YSCALE, i, buffer[i] * OSCILLO_YSCALE, TFT_RED);
 		//}
 		//else
 		//{
-			//M5.Lcd.drawLine(i - 1, OSCILLO_Y - oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
-			//M5.Lcd.drawLine(i - 1, OSCILLO_Y - buffer[i - 1] * OSCILLO_YSCALE, i, OSCILLO_Y - buffer[i] * OSCILLO_YSCALE, RED);
+		//oscillo.drawLine(i - 1, oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
+		oscillo.drawLine(i - 1- triggerIndex, buffer[i - 1] * OSCILLO_YSCALE, i- triggerIndex, buffer[i] * OSCILLO_YSCALE, TFT_RED);
 		//M5.Lcd.drawFastVLine (i, OSCILLO_Y - min(oldOscilloBuffer[i - 1], oldOscilloBuffer[i]) * OSCILLO_YSCALE, max(1,abs(oldOscilloBuffer[i]- oldOscilloBuffer[i-1])) * OSCILLO_YSCALE, BLACK);
 		//M5.Lcd.drawFastVLine(i, OSCILLO_Y - min(buffer[i - 1], buffer[i]) * OSCILLO_YSCALE, max(1,abs(buffer[i] - buffer[i - 1])) * OSCILLO_YSCALE, RED);
 		//}
@@ -269,8 +288,10 @@ void taskCaptureAndFFT(void *pvParameters)
 {
 	for (;;)
 	{
+		//uint32_t dt = millis();
 		Capture();
 		ComputeFFT();
+		//TextBox(String(millis() - dt) + " ms", GRAPHWIDTH, 70);
 	}
 }
 
@@ -300,10 +321,8 @@ void setup()
 	// Create a sprite for the graphs
 	spectrum.setColorDepth(16);
 	spectrum.createSprite(GRAPHWIDTH, SPECTRUMHEIGHT);
-
 	waterfall.setColorDepth(16);
 	waterfall.createSprite(GRAPHWIDTH, WATERFALLHEIGHT);
-
 	oscillo.setColorDepth(16);
 	oscillo.createSprite(GRAPHWIDTH, OSCILLOHEIGHT);
 
@@ -324,7 +343,7 @@ void setup()
 	xTaskCreatePinnedToCore(taskCaptureAndFFT, "AD sampling", 8192, NULL, 1, NULL, 0);
 	//xTaskCreatePinnedToCore(TaskDraw, "draw", 8192, NULL, 2, NULL, 0);
 	//xTaskCreatePinnedToCore(TaskDebug, "debug", 8192, NULL, 2, NULL, 0);
-	//xTaskCreatePinnedToCore(Synusoide_Task, "sin output on 26", 8192, NULL, 2, NULL, 0);
+	//xTaskCreatePinnedToCore(Sinusoide_Task, "sin output on 26", 8192, NULL, 2, NULL, 0);
 	xTaskCreatePinnedToCore(LedC_Task, "square wave on 26", 8192, NULL, 2, NULL, 0);
 }
 
