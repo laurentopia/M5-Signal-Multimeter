@@ -1,7 +1,7 @@
 # M5-Signal-Multimeter
 Displays FFT, Waterfall, Hz, THD and Oscillo of a signal
 
-![](https://i.imgur.com/Y1iuulZ.jpg)
+![](https://i.imgur.com/y4gbG5L.jpg)
 
 The goal:
 When connected to a microphone, shows what sounds look like.
