@@ -1,12 +1,13 @@
-// 4/3/2018 FFT
-// 4/9/2018 Oscillo
-// 4/9/2018 Hz
-// 4/11/2018 no more core 1, moved oscillo, fft to the main loop, back to drawline
-// 4/12/2018 moved everything in the main loop
-// 4/15/2018 split draw and capture, added semaphores (doesn't work)
-// 4/19/2018 back to main loop, split FFT() and drawFFT(), increased sampling to 20kHz for sound,
-//4/2/2018 waterfall, sprite, using TFT_eSPI, no more m5 but... capture is anemic.... why??
-
+/* 4/3/2018 FFT
+4/9/2018 Oscillo
+4/9/2018 Hz
+4/11/2018 no more core 1, moved oscillo, fft to the main loop, back to drawline
+4/12/2018 moved everything in the main loop
+4/15/2018 split draw and capture, added semaphores (doesn't work)
+4/19/2018 back to main loop, split FFT() and drawFFT(), increased sampling to 20kHz for sound,
+4/2/2018 waterfall, sprite, using TFT_eSPI, no more m5 but... capture is anemic.... why??
+5/1/2018 capture and FFT are performed on core 0 and draw on core 1... and it works!!
+*/ 
 
 // TODO: fix the weird retults, FFT access wrong?
 // TODO: fix the oscillo draw which is a bit on the sloooooooowwwwwwwww siiiiiiiiide
@@ -29,7 +30,7 @@ const unsigned int OSCILLOHEIGHT = 80;
 
 /////////////////////////////////////////////////////////////////////////
 const unsigned int SAMPLES = 512;				  // Must be a power of 2;
-const unsigned long SAMPLING_FREQUENCY = 40000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
+const unsigned long SAMPLING_FREQUENCY = 10000UL; // Hz, must be 40000 or less due to ADC conversion time. Determines maximum frequency that can be analysed by the FFT Fmax=sampleF/2.
 const unsigned int SIGNAL_AMPLITUDE = 200;		  // Depending on your audio source level, you may need to increase this value;
 unsigned int sampling_period_ms = 0;
 unsigned long long microseconds = 0;
@@ -87,6 +88,30 @@ void Capture()
 	}
 }
 
+double FFTreal[SAMPLES] = { 0 };
+double FFTimaginary[SAMPLES] = { 0 };
+double FFTmagnitude[SAMPLES] = { 0 };
+void ComputeFFT()
+{
+	//copy to fft buffer
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		FFTreal[i] = vSample[i];
+		FFTimaginary[i] = 0;
+	}
+
+	//FFT
+	FFT.Windowing(FFTreal, SAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+	FFT.Compute(FFTreal, FFTimaginary, SAMPLES, FFT_FORWARD);
+	FFT.ComplexToMagnitude(FFTreal, FFTimaginary, SAMPLES);
+
+	//copy to draw buffer
+	for (int i = 0; i < SAMPLES; i++)
+	{
+		FFTmagnitude[i] = FFTreal[i];
+	}
+}
+
 void DrawOscillo()
 {
 	//copy ADC samples to buffer
@@ -117,30 +142,6 @@ void DrawOscillo()
 	//copy to back buffer
 	for (int i = 0; i < SAMPLES; i++)
 		oldOscilloBuffer[i] = buffer[i];
-}
-
-double FFTreal[SAMPLES] = { 0 };
-double FFTimaginary[SAMPLES] = { 0 };
-double FFTmagnitude[SAMPLES] = { 0 };
-void ComputeFFT()
-{
-	//copy to fft buffer
-	for (int i = 0; i < SAMPLES; i++)
-	{
-		FFTreal[i] = vSample[i];
-		FFTimaginary[i] = 0;
-	}
-
-	//FFT
-	FFT.Windowing(FFTreal, SAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
-	FFT.Compute(FFTreal, FFTimaginary, SAMPLES, FFT_FORWARD);
-	FFT.ComplexToMagnitude(FFTreal, FFTimaginary, SAMPLES);
-
-	//copy to fft magnitude
-	for (int i = 0; i < SAMPLES; i++)
-	{
-		FFTmagnitude[i] = FFTreal[i];
-	}
 }
 
 double FFTDisplayBuffer[SAMPLES] = { 0 };
@@ -232,7 +233,7 @@ void TextBox(const String& txt, int x, int y)
 	img.deleteSprite();
 }
 
-void Synusoide_Task(void *parameter)
+void Sinusoide_Task(void *parameter)
 {
 	for (;;)
 	{
@@ -263,13 +264,16 @@ void LedC_Task(void *parameter)
 	}
 	vTaskDelete(NULL);
 }
-void taskCapture(void *pvParameters)
+
+void taskCaptureAndFFT(void *pvParameters)
 {
 	for (;;)
 	{
 		Capture();
+		ComputeFFT();
 	}
 }
+
 void TaskDraw(void *pvParameters)
 {
 	for (;;)
@@ -293,18 +297,15 @@ void setup()
 	tft.fillScreen(TFT_BLACK);
 	tft.setRotation(1);
 
-	// Create a sprite for the graph
+	// Create a sprite for the graphs
 	spectrum.setColorDepth(16);
 	spectrum.createSprite(GRAPHWIDTH, SPECTRUMHEIGHT);
-	spectrum.fillSprite(TFT_BLACK); // Note: Sprite is filled with black when created
 
 	waterfall.setColorDepth(16);
 	waterfall.createSprite(GRAPHWIDTH, WATERFALLHEIGHT);
-	waterfall.fillSprite(TFT_BLACK); // Note: Sprite is filled with black when created
 
 	oscillo.setColorDepth(16);
 	oscillo.createSprite(GRAPHWIDTH, OSCILLOHEIGHT);
-	oscillo.fillSprite(TFT_BLACK); // Note: Sprite is filled with black when created
 
 	Serial.begin(115200);
 
@@ -320,29 +321,20 @@ void setup()
 	FFTDisplayScale = 0.3;
 
 	//launch tasks parameters:  (task function, name, stack size (W), task parameters, priority, task handle, core#)
-	//xTaskCreatePinnedToCore(taskCapture, "AD sampling", 8192, NULL, 1, NULL, 0);
-	//xTaskCreatePinnedToCore(TaskDraw, "draw FFT", 8192, NULL, 2, NULL, 0);
+	xTaskCreatePinnedToCore(taskCaptureAndFFT, "AD sampling", 8192, NULL, 1, NULL, 0);
+	//xTaskCreatePinnedToCore(TaskDraw, "draw", 8192, NULL, 2, NULL, 0);
 	//xTaskCreatePinnedToCore(TaskDebug, "debug", 8192, NULL, 2, NULL, 0);
 	//xTaskCreatePinnedToCore(Synusoide_Task, "sin output on 26", 8192, NULL, 2, NULL, 0);
 	xTaskCreatePinnedToCore(LedC_Task, "square wave on 26", 8192, NULL, 2, NULL, 0);
-
 }
 
 long int oldMillis = 0;
 void loop()
 {
 	uint32_t dt = millis();
-
-	//Input();
-	//oldMillis = millis();
-	Capture(); //10ms
-	//Serial.println(millis() - oldMillis);
-	ComputeFFT(); //14ms
+	//Capture(); //10ms
+	//ComputeFFT(); //14ms @ 512, 3ms @ 128
 	DrawOscillo(); // 14ms
 	DrawFFT(); //28ms
-
-	// necessary when nothing is in loop and one core has a task running
-	//delay(500);
-	//M5.update();
-	TextBox(String( millis() - dt) + " ms",GRAPHWIDTH,200);
+	TextBox(String(millis() - dt) + " ms", GRAPHWIDTH, 200);
 }
