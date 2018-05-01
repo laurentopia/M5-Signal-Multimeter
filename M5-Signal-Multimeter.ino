@@ -239,6 +239,8 @@ void TextBox(const String& txt, int x, int y)
 	img.deleteSprite();
 }
 
+
+//*********************************** sin and square out
 void Sinusoide_Task(void *parameter)
 {
 	for (;;)
@@ -271,6 +273,8 @@ void LedC_Task(void *parameter)
 	vTaskDelete(NULL);
 }
 
+
+//**************************************** compute tasks
 void taskCaptureAndFFT(void *pvParameters)
 {
 	for (;;)
