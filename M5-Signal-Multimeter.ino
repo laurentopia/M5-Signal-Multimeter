@@ -140,25 +140,12 @@ void DrawOscillo()
 	oscillo.fillSprite(TFT_BLACK);
 	for (int i = triggerIndex; i < min(GRAPHWIDTH+triggerIndex,SAMPLES); i++)
 	{
-		//if (i == 0)
-		//{
-		//oscillo.drawPixel(i, buffer[i] * OSCILLO_YSCALE, TFT_ORANGE);
-
-		//spectrum.drawLine(i - 1, buffer[i - 1] * OSCILLO_YSCALE, i, buffer[i] * OSCILLO_YSCALE, TFT_RED);
-		//}
-		//else
-		//{
-		//oscillo.drawLine(i - 1, oldOscilloBuffer[i - 1] * OSCILLO_YSCALE, i, oldOscilloBuffer[i] * OSCILLO_YSCALE, BLACK); //clear
 		oscillo.drawLine(i - 1- triggerIndex, buffer[i - 1] * OSCILLO_YSCALE, i- triggerIndex, buffer[i] * OSCILLO_YSCALE, TFT_RED);
-		//M5.Lcd.drawFastVLine (i, OSCILLO_Y - min(oldOscilloBuffer[i - 1], oldOscilloBuffer[i]) * OSCILLO_YSCALE, max(1,abs(oldOscilloBuffer[i]- oldOscilloBuffer[i-1])) * OSCILLO_YSCALE, BLACK);
-		//M5.Lcd.drawFastVLine(i, OSCILLO_Y - min(buffer[i - 1], buffer[i]) * OSCILLO_YSCALE, max(1,abs(buffer[i] - buffer[i - 1])) * OSCILLO_YSCALE, RED);
-		//}
 	}
 
 	oscillo.pushSprite(0,OSCILLO_Y);
 
-
-	//copy to back buffer
+	//copy to back buffer (for deleting the curve, not needed when using sprite as frame buffer)
 	for (int i = 0; i < SAMPLES; i++)
 		oldOscilloBuffer[i] = buffer[i];
 }
